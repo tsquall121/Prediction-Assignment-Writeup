@@ -1,0 +1,145 @@
+---
+title: "Course Project"
+author: "Jie Tao"
+date: "9/16/2020"
+output:
+  pdf_document:
+    toc: yes
+  html_document:
+    toc: yes
+    number_sections: yes
+    df_print: kable
+---
+
+
+# Prediction Assignment Writeup
+
+
+## Summary
+
+
+The project utilizes activity data collected by wearable devices such as *Jawbone Up, Nike FuelBand,* and *Fitbit* to predict how well 6 participants perform in weight lifting exercise.
+The goal of this project is to use a variable "classe" in the raw training set to predict the same variable in validation set. I started by separating the raw training data into training and testing sets. Then, pre-processing the training set by removing all variable with last amount of missing values, near-zero-variance variables, and identification variables. After training three different models (decision three model, generalized boost model, and random forest model), I selected the **Random Forest Model (RFM)** as the final model based on its **accuracy** of **0.988**. Then, I applied the RFM to the validation set and find that the predicted *classe* is **B A B A A E D B A A B C B A E E A B B B**.
+
+
+## Data Splits and Exploration
+
+In this section, I read the raw data into *act_train* and *act_validation*. Then, I splitted the *act_train* into training and testing sets. The overview of the two sets is shown in the end. 
+```{r setup, include=FALSE}
+library(caret)
+library(tidyverse)
+library(rpart)
+library(rattle)
+library(randomForest)
+library(skimr)
+```
+
+
+```{r Data Splits and Exploration}
+# Read raw data
+act_train <- read.csv("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv")
+act_validation <- read.csv("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv")
+
+# Create training and testing sets
+intrain <- createDataPartition(act_train$classe, p = 0.7, list = FALSE)
+training <- act_train[intrain, ]
+testing <- act_train[-intrain, ]
+dim(training)
+dim(testing)
+
+# Glimpse the training data
+library(skimr)
+skim_without_charts(training)
+```
+
+
+## Data Pre-processing
+
+Given that many variables have large amount of missing values and zero variance, I excluded them from the final training and testing sets. Also, 5 identification variables such as *user_name* were left out. Eventually, there are 54 variables left in both training and testing sets.
+
+```{r Preprocessing}
+
+# Remove all variables with missing values
+library(tidyverse)
+training <- training %>% 
+    select_if(~!any(is.na(.))) %>% 
+    mutate(classe = factor(classe))
+testing <- testing%>% 
+    select_if(~!any(is.na(.))) %>% 
+    mutate(classe = factor(classe))
+
+# remove all variables with near zero variance
+nzv <- nearZeroVar(training)
+training <- training[, -nzv]
+testing <- testing[, -nzv]
+
+# remove all id variables
+training <- training[, -(1:5)]
+testing <- testing[, -(1:5)]
+
+dim(training)
+dim(testing)
+```
+
+## Model Training and Selection
+
+
+In total, I have trained three different models: Decision Tree Model (DTM), Generalized Boost Model (GBM), and Random Forest Model (RFM). The RFM was chosen as the final model due to its highest accuracy at 0.988.
+
+### Model Training
+
+
+
+```{r Model Training}
+set.seed(121)
+modfit_rpart <- rpart(classe ~ ., 
+                      method = "class",
+                      data = training)
+fancyRpartPlot(modfit_rpart)
+# prediction 
+pred_rpart <- predict(modfit_rpart, newdata = testing, type = "class")
+conf_mat_rpart <-confusionMatrix(pred_rpart, testing$classe) 
+conf_mat_rpart
+
+# Generalized boosted model
+set.seed(234)
+control_gbm <- trainControl(method = "repeatedcv", number = 5, repeats = 1)
+modfit_bgm <- train(classe ~ ., 
+                    method = "gbm", 
+                    trControl = control_gbm, 
+                    verbose = FALSE,
+                    data = training)
+# prediction
+pred_gbm <- predict(modfit_bgm, newdata = testing)
+conf_mat_bgm <- confusionMatrix(pred_gbm, testing$classe)
+conf_mat_bgm
+
+# Random forest
+set.seed(456)
+control_rf <- trainControl(method = "cv", number = 3, verboseIter = FALSE)
+modfit_rf <- train(classe ~ ., 
+                   method = "rf",
+                   trControl = control_rf,
+                   data = training)
+# prediction
+pred_rf <- predict(modfit_rf, newdata = testing)
+conf_mat_rf <- confusionMatrix(pred_rf, testing$classe)
+conf_mat_rf
+```
+
+
+### Final Model Selection
+```{r}
+# Final model selection
+which.max(c(conf_mat_rpart$overall["Accuracy"], conf_mat_bgm$overall["Accuracy"], conf_mat_rf$overall["Accuracy"]))
+```
+
+## Predication
+
+
+The results from RFM were applied to the validation set to predict the results of *classe*. Based on the prediction, *classe* follows the sequence of **B A B A A E D B A A B C B A E E A B B B**
+```{r}
+pred_val <- predict(modfit_rf, newdata = act_validation)
+pred_val
+```
+
